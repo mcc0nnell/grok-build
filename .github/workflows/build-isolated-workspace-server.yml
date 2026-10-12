@@ -1,0 +1,44 @@
+name: Build isolated workspace server
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      CARGO_BUILD_JOBS: "2"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recover runner disk for Rust
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/share/powershell
+          df -h /
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends cmake pkg-config clang libclang-dev libssl-dev protobuf-compiler
+      - name: Install pinned Rust
+        run: |
+          rustup toolchain install 1.94.0 --profile minimal
+          rustup default 1.94.0
+          rustc --version
+      - name: Compile standalone server only
+        run: |
+          cargo build --locked -p xai-grok-workspace --bin xai-workspace-server -j 2
+          test -x target/debug/xai-workspace-server
+          target/debug/xai-workspace-server --capabilities | head -c 3000
+          df -h /
+      - name: Upload server binary
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grok-workspace-server-linux-x86_64
+          path: target/debug/xai-workspace-server
+          retention-days: 1
+          if-no-files-found: error
